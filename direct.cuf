@@ -1,0 +1,53 @@
+program GPUdirect
+    use cudafor
+    implicit none
+    include 'mpif.h'
+ 
+    integer :: direct
+    character(len=255) :: env_var
+    integer :: rank, size, ierror
+    integer,dimension(:),allocatable :: h_buff
+    integer,device :: d_rank
+    integer,dimension(:),allocatable,device :: d_buff
+    integer :: i
+ 
+    call getenv("MPICH_RDMA_ENABLED_CUDA", env_var)
+    read( env_var, '(i10)' ) direct
+    if (direct .NE. 1) then
+      print *, 'MPICH_RDMA_ENABLED_CUDA not enabled!'
+      call exit(1)
+    endif
+ 
+    call MPI_INIT(ierror)
+ 
+    ! Get MPI rank and size
+    call MPI_COMM_RANK (MPI_COMM_WORLD, rank, ierror)
+    call MPI_COMM_SIZE (MPI_COMM_WORLD, size, ierror)
+ 
+    ! Initialize host and device buffers
+    allocate(h_buff(size))
+    allocate(d_buff(size))
+    ! Implicity copy rank to device
+    d_rank = rank
+ 
+    ! Preform allgather using device buffers
+    call MPI_ALLGATHER(d_rank, 1, MPI_INTEGER, d_buff, 1, MPI_INTEGER, MPI_COMM_WORLD, ierror);
+ 
+    ! Check that buffer is correct
+    h_buff = d_buff(1:size)
+    do i=1,size
+        if (h_buff(i) .NE. i-1) then
+            print *, 'Alltoall Failed!'
+            call exit(1)
+        endif
+    enddo
+    if (rank .EQ. 0) then
+        print *, 'Success!'
+    endif
+ 
+    ! Clean up
+    deallocate(h_buff)
+    deallocate(d_buff)
+    call MPI_FINALIZE(ierror)
+ 
+end program GPUdirect
